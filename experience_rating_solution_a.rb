@@ -29,12 +29,16 @@ class Experience < ActiveRecord
   has_many :feedback
 
   def rating
-    responses = feedback.responses
-    return 0 unless responses.count > 0
+    score_sum = 0
+    ratings_count = 0
+    feedback.responses.experience_rates.select('answer, count(*) cnt').group(:answer).each do |response|
+      score_sum += response.rating_to_score
+      ratings_count += response[:cnt]
+    end
 
-    total_sum = feedback.responses.experience_rates.sum { |response| response.rating_to_score }
+    return 0 if ratings_count == 0
 
-    (total_sum.to_f / responses.count).round(2)
+    (score_sum.to_f / ratings_count).round(2)
   end
 
 end

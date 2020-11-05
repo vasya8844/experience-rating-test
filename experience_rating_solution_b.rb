@@ -4,7 +4,8 @@
 #
 # id :integer, not null, primary key
 # name :string
-# rating :float, null
+# ratings_sum :integer, not null, default: 0
+# ratings_count :integer, not null, default: 0
 
 # Table name: feedback
 #
@@ -29,24 +30,18 @@
 class Experience < ActiveRecord
   has_many :feedback
 
-  # calculate rating on-demand
   def rating
-    return read_attribute(:rating) if read_attribute(:rating)
+    return 0 unless ratings_count > 0
 
-    update rating: calculate_rating
-
-    read_attribute(:rating)
+    ratings_sum.to_f / ratings_count
   end
 
-  private
+  # added_removed
+  def changed_feedback_response(count_add, score)
+    reload
 
-  def calculate_rating
-    responses = feedback.responses
-    return 0 unless responses.count > 0
-
-    total_sum = feedback.responses.experience_rates.sum { |response| response.rating_to_score }
-
-    (total_sum.to_f / responses.count).round(2)
+    # possible we can use here built in increment functionality...
+    update ratings_count: ratings_count + count_add, ratings_sum: ratings_sum + score
   end
 
 end
@@ -59,19 +54,17 @@ end
 class Response < ActiveRecord
   belongs_to :feedback
 
-  after_save :reset_experience_rating
-  before_destroy :reset_experience_rating
+  after_create do
+    feedback.experience.changed_feedback_response(1, rating_to_score)
+  end
+
+  before_destroy do
+    feedback.experience.changed_feedback_response(-1, -rating_to_score)
+  end
 
   RATING_QUESTION = 'Rate the experience'
 
   scope :experience_rates, -> { where(:question => RATING_QUESTION)}
-
-  private
-
-  def reset_experience_rating
-    # just reset experience rating and don't do any calculations
-    feedback.experience.update rating: nil if question == RATING_QUESTION
-  end
 
   # to get rid of this step, and add possibility to do db aggregation, need:
   #  - update sourcecode to store only rating in db 1, 2, ...
